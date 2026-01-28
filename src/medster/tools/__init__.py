@@ -149,7 +149,9 @@ def search_patients(
         if isinstance(all_patients, str):
             return {"error": "Could not retrieve patient list", "raw": all_patients}
 
-        patient_ids = all_patients.get("patient_ids", [])[:limit]
+        # Handle response format from list_patients
+        # It returns {"patient_count": N, "patients": [...], "note": "..."}
+        patient_ids = all_patients.get("patients", all_patients.get("patient_ids", []))[:limit]
 
         # If no filters, return first N patients
         if not any([condition, medication, lab_name]):
@@ -160,7 +162,6 @@ def search_patients(
             }
 
         # Apply filters (simplified - in production would use batch queries)
-        matching = []
         filters_applied = []
 
         if condition:

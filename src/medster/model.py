@@ -11,7 +11,11 @@ Based on Pi Agent Framework philosophy:
 import os
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
 import anthropic
+
+# Load environment variables (override empty values)
+load_dotenv(override=True)
 
 
 # ============================================================================

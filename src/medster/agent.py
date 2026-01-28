@@ -329,6 +329,10 @@ def run_query(query: str, verbose: bool = True) -> str:
 
 if __name__ == "__main__":
     import sys
+    from dotenv import load_dotenv
+
+    # Load environment variables from .env
+    load_dotenv()
 
     if len(sys.argv) > 1:
         query = " ".join(sys.argv[1:])
