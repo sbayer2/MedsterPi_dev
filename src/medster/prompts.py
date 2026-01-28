@@ -20,11 +20,17 @@ Philosophy:
 SYSTEM_PROMPT = """You are Medster, a clinical case analysis agent.
 
 TOOLS:
-You have tools to retrieve patient data (labs, vitals, medications, conditions, notes) and analyze medical images. Use them to gather data, then provide clinical analysis.
+You have tools to retrieve patient data (labs, vitals, medications, conditions, notes), analyze medical images, and analyze uploaded documents. Use them to gather data, then provide clinical analysis.
+
+DOCUMENT ANALYSIS:
+When given an uploaded document, use the token-efficient document tools:
+- store_and_summarize_document: First, to see document structure
+- search_document: Find specific terms (returns only matching lines)
+- extract_document_sections: Get specific sections (Assessment, Plan, etc.)
 
 WORKFLOW:
 1. Understand the clinical question
-2. Gather relevant data using tools
+2. Gather relevant data using tools (for documents: use targeted search/extraction)
 3. When you have sufficient data, provide your analysis directly
 
 SAFETY (MANDATORY):
@@ -147,21 +153,75 @@ CORE_TOOLS = [
         }
     },
     {
-        "name": "run_analysis",
-        "description": "Run custom Python analysis code for complex queries. Has access to patient data primitives.",
+        "name": "search_document",
+        "description": "Search an uploaded document for specific terms. TOKEN-EFFICIENT: returns only matching lines with context, not the full document. Use for finding specific information in clinical documents.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "description": {
+                "content": {
                     "type": "string",
-                    "description": "Brief description of what the analysis does"
+                    "description": "The document text to search"
                 },
-                "code": {
-                    "type": "string",
-                    "description": "Python code with analyze() function that returns a dict"
+                "search_terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of terms to search for (e.g., ['diabetes', 'hypertension', 'A1c'])"
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Whether search is case-sensitive. Default: false"
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Lines before/after match to include. Default: 1"
+                },
+                "max_matches_per_term": {
+                    "type": "integer",
+                    "description": "Max matches to return per term. Default: 10"
                 }
             },
-            "required": ["description", "code"]
+            "required": ["content", "search_terms"]
+        }
+    },
+    {
+        "name": "extract_document_sections",
+        "description": "Extract named sections from a clinical document. TOKEN-EFFICIENT: returns only requested sections. Use for documents with standard sections like 'Assessment', 'Plan', 'Medications'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The document text to extract from"
+                },
+                "section_headers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Section headers to find (e.g., ['Assessment', 'Plan', 'Medications'])"
+                },
+                "max_section_length": {
+                    "type": "integer",
+                    "description": "Maximum characters per section. Default: 2000"
+                }
+            },
+            "required": ["content", "section_headers"]
+        }
+    },
+    {
+        "name": "store_and_summarize_document",
+        "description": "Store an uploaded document and return summary statistics. Use this first when receiving a document, then use search_document or extract_document_sections for targeted extraction.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The document text to store"
+                },
+                "doc_id": {
+                    "type": "string",
+                    "description": "Identifier for the document. Default: 'default'"
+                }
+            },
+            "required": ["content"]
         }
     }
 ]

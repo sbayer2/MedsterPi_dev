@@ -1,18 +1,22 @@
 """
-MedsterPi Tools - Streamlined Core Tools
+MedsterPi Tools - Streamlined Core Tools (Hybrid Approach)
 Based on Pi Agent Framework philosophy: fewer tools, better composability.
 
-5 Core Tools:
+6 Core Tools:
 1. get_patient_data - Comprehensive patient data retrieval
 2. search_patients - Find patients by criteria
 3. analyze_image - Medical image analysis
 4. calculate_score - Clinical risk scores
-5. run_analysis - Custom Python analysis
+5. search_document - Token-efficient document search (NO exec!)
+6. extract_document_sections - Token-efficient section extraction (NO exec!)
 
-These 5 tools can accomplish everything the original 20+ tools did,
-with cleaner interfaces and better composability.
+REMOVED: run_analysis (exec-based code generation)
+- Security risk with exec()
+- LLM can compose tools natively via event loop
+- Document analysis now uses dedicated safe tools
 """
 
+import re
 import json
 from typing import Any, Dict, List, Optional
 
@@ -34,13 +38,35 @@ from medster.tools.medical.medications import (
 from medster.tools.clinical.scores import (
     calculate_patient_score as _calculate_patient_score,
 )
-from medster.tools.analysis.code_generator import (
-    generate_and_run_analysis as _generate_and_run_analysis,
-)
 from medster.tools.analysis.vision_analyzer import (
     analyze_patient_dicom as _analyze_patient_dicom,
     analyze_patient_ecg as _analyze_patient_ecg,
 )
+
+
+# ============================================================================
+# DOCUMENT CONTENT STORE
+# ============================================================================
+# Stores uploaded document content between tool calls.
+# This allows token-efficient searching without sending full doc to LLM.
+# ============================================================================
+
+_document_store: Dict[str, str] = {}
+
+
+def store_document(doc_id: str, content: str) -> None:
+    """Store a document for later searching."""
+    _document_store[doc_id] = content
+
+
+def get_document(doc_id: str) -> Optional[str]:
+    """Retrieve a stored document."""
+    return _document_store.get(doc_id)
+
+
+def clear_document(doc_id: str) -> None:
+    """Clear a stored document."""
+    _document_store.pop(doc_id, None)
 
 
 # ============================================================================
@@ -177,7 +203,7 @@ def search_patients(
             "patient_ids": patient_ids,
             "count": len(patient_ids),
             "filters_applied": filters_applied,
-            "note": "Filter application requires data scan - use run_analysis for complex queries"
+            "note": "Filter application requires iterating through patient data with get_patient_data"
         }
 
     except Exception as e:
@@ -250,48 +276,239 @@ def calculate_score(
         return {"error": str(e)}
 
 
-def run_analysis(
-    description: str,
-    code: str
+# ============================================================================
+# DOCUMENT ANALYSIS TOOLS (No exec() - Token Efficient)
+# ============================================================================
+# These tools allow searching/extracting from uploaded documents without
+# sending the entire document to the LLM. Only relevant snippets are returned.
+# ============================================================================
+
+def search_document(
+    content: str,
+    search_terms: List[str],
+    case_sensitive: bool = False,
+    context_lines: int = 1,
+    max_matches_per_term: int = 10
 ) -> Dict[str, Any]:
     """
-    Run custom Python analysis code.
+    Search a document for specific terms. Returns only matching lines with context.
 
-    The code should define an analyze() function that returns a dict.
-    Available primitives in sandbox:
-    - get_patients(limit) -> list of patient IDs
-    - load_patient(pid) -> patient data dict
-    - load_labs(pid) -> labs list
-    - load_vitals(pid) -> vitals list
-    - load_conditions(pid) -> conditions list
-    - load_medications(pid) -> medications list
-    - scan_dicom_directory() -> list of DICOM files
-    - load_dicom_image(pid, index) -> base64 image
-    - load_ecg_image(pid) -> base64 image
-    - log_progress(message) -> log progress during iteration
+    This is TOKEN-EFFICIENT: only relevant snippets are returned to the LLM,
+    not the entire document.
 
     Args:
-        description: Brief description of the analysis
-        code: Python code with analyze() function
+        content: The document text to search
+        search_terms: List of terms to search for (e.g., ["diabetes", "hypertension", "A1c"])
+        case_sensitive: Whether search is case-sensitive (default: False)
+        context_lines: Number of lines before/after match to include (default: 1)
+        max_matches_per_term: Max matches to return per term (default: 10)
 
     Returns:
-        Dict with analysis results
+        Dict with matches for each search term, including line numbers and context
     """
-    try:
-        result = _generate_and_run_analysis.invoke({
-            "analysis_description": description,
-            "code": code
-        })
+    if not content:
+        return {"error": "No document content provided"}
 
-        if isinstance(result, str):
-            try:
-                return json.loads(result)
-            except json.JSONDecodeError:
-                return {"result": result}
-        return result
+    if not search_terms:
+        return {"error": "No search terms provided"}
 
-    except Exception as e:
-        return {"error": str(e)}
+    lines = content.split('\n')
+    results = {
+        "document_stats": {
+            "total_lines": len(lines),
+            "total_characters": len(content)
+        },
+        "matches": {}
+    }
+
+    for term in search_terms:
+        term_matches = []
+        search_pattern = term if case_sensitive else term.lower()
+
+        for i, line in enumerate(lines):
+            search_line = line if case_sensitive else line.lower()
+
+            if search_pattern in search_line:
+                # Get context lines
+                start_idx = max(0, i - context_lines)
+                end_idx = min(len(lines), i + context_lines + 1)
+                context = lines[start_idx:end_idx]
+
+                term_matches.append({
+                    "line_number": i + 1,
+                    "matched_line": line.strip(),
+                    "context": [l.strip() for l in context]
+                })
+
+                if len(term_matches) >= max_matches_per_term:
+                    break
+
+        results["matches"][term] = {
+            "count": len(term_matches),
+            "matches": term_matches
+        }
+
+    # Summary
+    results["summary"] = {
+        term: results["matches"][term]["count"]
+        for term in search_terms
+    }
+
+    return results
+
+
+def extract_document_sections(
+    content: str,
+    section_headers: List[str],
+    max_section_length: int = 2000
+) -> Dict[str, Any]:
+    """
+    Extract named sections from a document. Returns only the requested sections.
+
+    This is TOKEN-EFFICIENT: only requested sections are returned to the LLM,
+    not the entire document.
+
+    Useful for clinical documents with standard sections like:
+    - "Chief Complaint", "History of Present Illness", "Assessment", "Plan"
+    - "Medications", "Allergies", "Vitals", "Labs"
+
+    Args:
+        content: The document text to extract from
+        section_headers: List of section headers to find (e.g., ["Assessment", "Plan", "Medications"])
+        max_section_length: Maximum characters per section (default: 2000)
+
+    Returns:
+        Dict with extracted sections, their content, and metadata
+    """
+    if not content:
+        return {"error": "No document content provided"}
+
+    if not section_headers:
+        return {"error": "No section headers provided"}
+
+    results = {
+        "document_stats": {
+            "total_lines": len(content.split('\n')),
+            "total_characters": len(content)
+        },
+        "sections": {},
+        "sections_found": [],
+        "sections_not_found": []
+    }
+
+    lines = content.split('\n')
+
+    for header in section_headers:
+        # Try to find the section header (case-insensitive)
+        header_pattern = re.compile(
+            rf'^[\s\*\#\-]*{re.escape(header)}[\s\*\#\-:]*$',
+            re.IGNORECASE | re.MULTILINE
+        )
+
+        # Also try simpler pattern: header at start of line
+        simple_pattern = re.compile(
+            rf'^{re.escape(header)}',
+            re.IGNORECASE | re.MULTILINE
+        )
+
+        section_content = None
+        start_line = None
+
+        # Find the header line
+        for i, line in enumerate(lines):
+            if header_pattern.match(line.strip()) or simple_pattern.match(line.strip()):
+                start_line = i
+                break
+
+        if start_line is not None:
+            # Extract content until next section header or end
+            section_lines = []
+            for j in range(start_line + 1, len(lines)):
+                line = lines[j]
+                # Stop if we hit another section header (line starting with capital letter followed by colon)
+                if re.match(r'^[A-Z][A-Za-z\s]+:', line.strip()):
+                    break
+                # Stop if we hit a markdown header
+                if line.strip().startswith('#'):
+                    break
+                # Stop if line looks like a new section (ALL CAPS)
+                if line.strip().isupper() and len(line.strip()) > 3:
+                    break
+                section_lines.append(line)
+
+            section_content = '\n'.join(section_lines).strip()
+
+            # Truncate if too long
+            if len(section_content) > max_section_length:
+                section_content = section_content[:max_section_length] + "\n... [truncated]"
+
+            results["sections"][header] = {
+                "found": True,
+                "start_line": start_line + 1,
+                "content": section_content,
+                "length": len(section_content)
+            }
+            results["sections_found"].append(header)
+        else:
+            results["sections"][header] = {
+                "found": False,
+                "content": None
+            }
+            results["sections_not_found"].append(header)
+
+    return results
+
+
+def store_and_summarize_document(
+    content: str,
+    doc_id: str = "default"
+) -> Dict[str, Any]:
+    """
+    Store a document for later searching and return a summary.
+
+    Use this first when receiving an uploaded document, then use
+    search_document or extract_document_sections with the stored content.
+
+    Args:
+        content: The document text to store
+        doc_id: Identifier for the document (default: "default")
+
+    Returns:
+        Dict with document statistics and preview
+    """
+    if not content:
+        return {"error": "No document content provided"}
+
+    # Store the document
+    store_document(doc_id, content)
+
+    lines = content.split('\n')
+    words = content.split()
+
+    # Try to identify document type and key sections
+    potential_sections = []
+    for line in lines[:50]:  # Check first 50 lines
+        stripped = line.strip()
+        # Look for section headers (lines ending with colon or all caps)
+        if stripped.endswith(':') and len(stripped) < 50:
+            potential_sections.append(stripped)
+        elif stripped.isupper() and 3 < len(stripped) < 50:
+            potential_sections.append(stripped)
+
+    return {
+        "status": "stored",
+        "doc_id": doc_id,
+        "stats": {
+            "total_lines": len(lines),
+            "total_words": len(words),
+            "total_characters": len(content)
+        },
+        "preview": {
+            "first_lines": [l.strip() for l in lines[:5] if l.strip()],
+            "potential_sections": potential_sections[:10]
+        },
+        "hint": "Use search_document to find specific terms, or extract_document_sections to get specific sections"
+    }
 
 
 # ============================================================================
@@ -303,7 +520,9 @@ TOOL_REGISTRY: Dict[str, callable] = {
     "search_patients": search_patients,
     "analyze_image": analyze_image,
     "calculate_score": calculate_score,
-    "run_analysis": run_analysis,
+    "search_document": search_document,
+    "extract_document_sections": extract_document_sections,
+    "store_and_summarize_document": store_and_summarize_document,
 }
 
 
