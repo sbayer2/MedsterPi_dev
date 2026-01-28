@@ -1,130 +1,194 @@
+"""
+MedsterPi Model - Pure Anthropic SDK Implementation
+No LangChain dependencies - direct API calls only.
+
+Based on Pi Agent Framework philosophy:
+- Minimal abstraction layers
+- Direct SDK usage for clarity and control
+- Simple interface: messages in, response out
+"""
+
 import os
-import time
-from langchain_anthropic import ChatAnthropic
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel
-from typing import Type, List, Optional, Union, Dict, Any
-from langchain_core.tools import BaseTool
-from langchain_core.messages import AIMessage, HumanMessage
+from typing import Any, Dict, List, Optional
 
-from medster.prompts import DEFAULT_SYSTEM_PROMPT
+import anthropic
 
+
+# ============================================================================
+# CLIENT SINGLETON
+# ============================================================================
+
+_client: Optional[anthropic.Anthropic] = None
+
+
+def get_client() -> anthropic.Anthropic:
+    """Get or create Anthropic client singleton."""
+    global _client
+    if _client is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+        _client = anthropic.Anthropic(api_key=api_key)
+    return _client
+
+
+# ============================================================================
+# MAIN LLM CALL FUNCTION
+# ============================================================================
 
 def call_llm(
-    prompt: str,
-    model: str = "claude-sonnet-4.5",
-    system_prompt: Optional[str] = None,
-    output_schema: Optional[Type[BaseModel]] = None,
-    tools: Optional[List[BaseTool]] = None,
-    images: Optional[List[str]] = None,
-) -> AIMessage:
+    messages: List[Dict[str, Any]],
+    system_prompt: str,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 4096
+) -> Dict[str, Any]:
     """
-    Call Claude LLM with the given prompt and configuration.
+    Call Claude LLM with messages and tools.
+
+    This is the core function for the Pi-style event loop.
+    Simple interface: messages in, structured response out.
 
     Args:
-        prompt: The user prompt to send
-        model: The model to use (default: claude-sonnet-4.5)
-        system_prompt: Optional system prompt override
-        output_schema: Optional Pydantic schema for structured output
-        tools: Optional list of tools to bind
-        images: Optional list of base64-encoded PNG images for vision analysis
+        messages: Conversation history in Anthropic format
+        system_prompt: System prompt for the model
+        tools: Optional list of tool definitions (Anthropic format)
+        model: Model identifier
+        max_tokens: Maximum tokens in response
 
     Returns:
-        AIMessage or structured output based on schema
+        Dict with keys:
+            - content: Text content from response (if any)
+            - content_blocks: Raw content blocks from response
+            - tool_calls: List of tool calls (if any)
+            - stop_reason: Why the model stopped
+            - usage: Token usage info
     """
-    final_system_prompt = system_prompt if system_prompt else DEFAULT_SYSTEM_PROMPT
+    client = get_client()
 
-    # Map model names to Anthropic model IDs
-    model_mapping = {
-        "claude-sonnet-4.5": "claude-sonnet-4-5-20250929",
-        "claude-opus-4.5": "claude-opus-4-5-20251101",
-        "claude-haiku-4": "claude-haiku-4-20250107",
+    # Build request kwargs
+    request_kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": messages,
     }
 
-    anthropic_model = model_mapping.get(model, "claude-sonnet-4-5-20250929")
+    # Add tools if provided
+    if tools:
+        request_kwargs["tools"] = tools
 
-    # Initialize Anthropic LLM
-    llm = ChatAnthropic(
-        model=anthropic_model,
-        temperature=0,
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-    )
+    # Make the API call
+    response = client.messages.create(**request_kwargs)
 
-    # Add structured output or tools to the LLM
-    runnable = llm
-    if output_schema:
-        runnable = llm.with_structured_output(output_schema)
-    elif tools:
-        runnable = llm.bind_tools(tools)
+    # Parse response into structured format
+    result = {
+        "content": "",
+        "content_blocks": [],
+        "tool_calls": [],
+        "stop_reason": response.stop_reason,
+        "usage": {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens
+        }
+    }
 
-    # Build messages based on whether images are included
-    if images:
-        # Multimodal message with images
-        content_parts: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+    # Process content blocks
+    for block in response.content:
+        result["content_blocks"].append(block)
 
-        # Add each image to content (Anthropic native format)
-        for img_base64 in images:
-            content_parts.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": img_base64
-                }
+        if block.type == "text":
+            result["content"] += block.text
+
+        elif block.type == "tool_use":
+            result["tool_calls"].append({
+                "id": block.id,
+                "name": block.name,
+                "input": block.input
             })
 
-        # Create multimodal message
-        messages = [
-            {"role": "system", "content": final_system_prompt},
-            {"role": "user", "content": content_parts}
-        ]
+    return result
 
-        # Retry logic for transient connection errors and rate limits
-        max_retries = 6
-        for attempt in range(max_retries):
-            try:
-                return runnable.invoke(messages)
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "rate_limit" in error_str.lower():
-                    if attempt == max_retries - 1:
-                        raise
-                    # Exponential backoff for rate limits: 10s, 20s, 40s, 80s...
-                    wait_time = 10 * (2 ** attempt)
-                    print(f"Rate limit hit. Waiting {wait_time}s before retry (attempt {attempt + 1}/{max_retries})...")
-                    time.sleep(wait_time)
-                else:
-                    # Standard backoff for other errors
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(1 * (2 ** attempt))
 
-    else:
-        # Text-only message
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", final_system_prompt),
-            ("user", "{prompt}")
-        ])
+# ============================================================================
+# CONVENIENCE FUNCTIONS
+# ============================================================================
 
-        chain = prompt_template | runnable
+def simple_completion(
+    prompt: str,
+    system_prompt: str = "You are a helpful assistant.",
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 1024
+) -> str:
+    """
+    Simple text completion without tools.
 
-        # Retry logic for transient connection errors and rate limits
-        max_retries = 6
-        for attempt in range(max_retries):
-            try:
-                return chain.invoke({"prompt": prompt})
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "rate_limit" in error_str.lower():
-                    if attempt == max_retries - 1:
-                        raise
-                    # Exponential backoff for rate limits: 10s, 20s, 40s, 80s...
-                    wait_time = 10 * (2 ** attempt)
-                    print(f"Rate limit hit. Waiting {wait_time}s before retry (attempt {attempt + 1}/{max_retries})...")
-                    time.sleep(wait_time)
-                else:
-                    # Standard backoff for other errors
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(1 * (2 ** attempt))
+    Args:
+        prompt: User prompt
+        system_prompt: System prompt
+        model: Model identifier
+        max_tokens: Maximum tokens
 
+    Returns:
+        Text response
+    """
+    messages = [{"role": "user", "content": prompt}]
+    response = call_llm(
+        messages=messages,
+        system_prompt=system_prompt,
+        model=model,
+        max_tokens=max_tokens
+    )
+    return response["content"]
+
+
+def count_tokens(text: str) -> int:
+    """
+    Estimate token count for text.
+    Uses rough approximation: ~4 chars per token.
+
+    Args:
+        text: Text to count
+
+    Returns:
+        Estimated token count
+    """
+    return len(text) // 4
+
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+
+# Available models with their characteristics
+MODELS = {
+    "claude-sonnet-4-20250514": {
+        "name": "Claude Sonnet 4",
+        "context_window": 200000,
+        "max_output": 8192,
+        "cost_per_1k_input": 0.003,
+        "cost_per_1k_output": 0.015,
+        "recommended_for": ["general", "coding", "analysis"]
+    },
+    "claude-opus-4-20250514": {
+        "name": "Claude Opus 4",
+        "context_window": 200000,
+        "max_output": 8192,
+        "cost_per_1k_input": 0.015,
+        "cost_per_1k_output": 0.075,
+        "recommended_for": ["complex reasoning", "research"]
+    },
+    "claude-3-5-haiku-20241022": {
+        "name": "Claude 3.5 Haiku",
+        "context_window": 200000,
+        "max_output": 8192,
+        "cost_per_1k_input": 0.0008,
+        "cost_per_1k_output": 0.004,
+        "recommended_for": ["fast", "simple tasks"]
+    }
+}
+
+
+def get_model_info(model: str) -> Dict[str, Any]:
+    """Get information about a model."""
+    return MODELS.get(model, MODELS["claude-sonnet-4-20250514"])
