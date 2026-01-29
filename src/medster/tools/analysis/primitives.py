@@ -503,7 +503,7 @@ def analyze_image_with_llm(image_base64: str, prompt: str) -> str:
         response = call_llm(
             prompt=prompt,
             images=[image_base64],
-            model="claude-sonnet-4.5"  # Use Claude Sonnet 4.5 for vision
+            model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for vision
         )
 
         # Extract text content from response
@@ -582,7 +582,7 @@ Be precise in your RHYTHM classification. Only state "Atrial Fibrillation" if yo
         response = call_llm(
             prompt=prompt,
             images=[ecg_image],
-            model="claude-sonnet-4.5"  # Use Claude Sonnet 4.5 for ECG
+            model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for ECG
         )
 
         raw_text = response.content if hasattr(response, 'content') else str(response)
@@ -681,7 +681,7 @@ def analyze_multiple_images_with_llm(images: List[str], prompt: str) -> str:
         response = call_llm(
             prompt=prompt,
             images=valid_images,
-            model="claude-sonnet-4.5"  # Use Claude Sonnet 4.5 for vision
+            model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for vision
         )
 
         # Extract text content from response

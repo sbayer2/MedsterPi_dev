@@ -44,7 +44,7 @@ def call_llm(
     messages: List[Dict[str, Any]],
     system_prompt: str,
     tools: Optional[List[Dict[str, Any]]] = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-5-20250929",
     max_tokens: int = 4096
 ) -> Dict[str, Any]:
     """
@@ -121,7 +121,7 @@ def call_llm(
 def simple_completion(
     prompt: str,
     system_prompt: str = "You are a helpful assistant.",
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-5-20250929",
     max_tokens: int = 1024
 ) -> str:
     """
@@ -166,8 +166,8 @@ def count_tokens(text: str) -> int:
 
 # Available models with their characteristics
 MODELS = {
-    "claude-sonnet-4-20250514": {
-        "name": "Claude Sonnet 4",
+    "claude-sonnet-4-5-20250929": {
+        "name": "Claude Sonnet 4.5",
         "context_window": 200000,
         "max_output": 8192,
         "cost_per_1k_input": 0.003,
@@ -195,4 +195,4 @@ MODELS = {
 
 def get_model_info(model: str) -> Dict[str, Any]:
     """Get information about a model."""
-    return MODELS.get(model, MODELS["claude-sonnet-4-20250514"])
+    return MODELS.get(model, MODELS["claude-sonnet-4-5-20250929"])

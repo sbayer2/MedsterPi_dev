@@ -43,7 +43,7 @@ dev = [
 ]
 
 [project.scripts]
-medster-pi = "medster.agent:main"
+medster-pi = "medster.cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -588,20 +588,6 @@ wheels = [
 ]
 
 [[package]]
-name = "langchain-anthropic"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anthropic" },
-    { name = "langchain-core" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/d3/8ac7d664e87aa9bdf5f6a4d55324316933aec8beb1690932dbe7b63416e2/langchain_anthropic-1.1.0.tar.gz", hash = "sha256:427e102b76a417fb5713e81e853225e7459d71fc7abdf4d86722f0e01ad43845", size = 684087, upload-time = "2025-11-17T21:31:31.146Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/95/f340acdd8d9f392606f026a1326a33cfb1f9b172c7607c70ab0c2b43d74d/langchain_anthropic-1.1.0-py3-none-any.whl", hash = "sha256:2593f10b984448e31a9fd486ab2f7ebc8a0f7f82ba1ca477339e4f5ddd7f0e8d", size = 47793, upload-time = "2025-11-17T21:31:29.979Z" },
-]
-
-[[package]]
 name = "langchain-core"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -694,14 +680,14 @@ wheels = [
 ]
 
 [[package]]
-name = "medster"
-version = "0.1.0"
+name = "medster-pi"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "fastapi" },
     { name = "google-cloud-storage" },
     { name = "langchain" },
-    { name = "langchain-anthropic" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pillow" },
@@ -729,11 +715,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = ">=0.40.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "fastapi", specifier = ">=0.123.5" },
     { name = "google-cloud-storage", specifier = ">=2.14.0" },
     { name = "langchain", specifier = ">=0.3.0" },
-    { name = "langchain-anthropic", specifier = ">=1.1.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pillow", specifier = ">=12.0.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.0" },

@@ -137,7 +137,7 @@ Be specific and clinically relevant."""
         response = call_llm(
             prompt=prompt,
             images=[image_base64],
-            model="claude-sonnet-4.5"
+            model="claude-sonnet-4-5-20250929"
         )
 
         analysis_text = response.content if hasattr(response, 'content') else str(response)
@@ -216,7 +216,7 @@ Provide specific clinical findings."""
         response = call_llm(
             prompt=prompt,
             images=[image_base64],
-            model="claude-sonnet-4.5"
+            model="claude-sonnet-4-5-20250929"
         )
 
         analysis_text = response.content if hasattr(response, 'content') else str(response)
@@ -297,7 +297,7 @@ Provide a detailed analysis with specific findings."""
                 response = call_llm(
                     prompt=prompt,
                     images=[ecg_image],
-                    model="claude-sonnet-4.5"  # Use Claude Sonnet 4.5 for vision
+                    model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for vision
                 )
                 custom_analysis = response.content if hasattr(response, 'content') else str(response)
                 result["custom_analysis"] = custom_analysis
@@ -415,7 +415,7 @@ Format your response as structured findings for each image."""
         response = call_llm(
             prompt=full_prompt,
             images=base64_images,
-            model="claude-sonnet-4.5"
+            model="claude-sonnet-4-5-20250929"
         )
 
         # Extract text content from response

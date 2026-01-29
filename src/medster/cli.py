@@ -11,7 +11,7 @@ from prompt_toolkit.history import InMemoryHistory
 
 def main():
     print_intro()
-    agent = Agent()
+    agent = Agent(verbose=True)
 
     # Create a prompt session with history
     session = PromptSession(history=InMemoryHistory())
@@ -25,7 +25,9 @@ def main():
                 break
             if query:
                 # Run the clinical analysis agent
-                agent.run(query)
+                response = agent.run(query)
+                if response:
+                    print(f"\n{response}\n")
         except (KeyboardInterrupt, EOFError):
             print("\nSession ended. Goodbye!")
             break

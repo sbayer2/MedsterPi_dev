@@ -85,7 +85,7 @@ class Agent:
     def __init__(
         self,
         max_iterations: int = 25,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-5-20250929",
         event_handler: Optional[EventHandler] = None,
         verbose: bool = False
     ):
@@ -288,7 +288,7 @@ class Agent:
 def create_agent(
     verbose: bool = True,
     max_iterations: int = 25,
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-5-20250929"
 ) -> Agent:
     """
     Create a MedsterPi agent with sensible defaults.
