@@ -149,7 +149,7 @@ class Agent:
             error = event.data.get('error', 'Unknown error')
             print(f"{prefix} ❌ ERROR: {error}")
 
-    def run(self, query: str) -> str:
+    def run(self, query: str) -> Dict[str, Any]:
         """
         Execute the agent loop.
 
@@ -163,7 +163,7 @@ class Agent:
             query: The user's clinical query
 
         Returns:
-            The final text response from the agent
+            Dict with 'response' (str) and 'usage' (token counts)
         """
         # Initialize messages with user query
         messages: List[Dict[str, Any]] = [
@@ -174,6 +174,8 @@ class Agent:
 
         iteration = 0
         final_response = ""
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -195,12 +197,24 @@ class Agent:
                 )
             except Exception as e:
                 self._emit(EventType.ERROR, {"error": str(e)}, iteration)
-                return f"Error calling LLM: {str(e)}"
+                return {"response": f"Error calling LLM: {str(e)}", "usage": {
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "total_tokens": total_input_tokens + total_output_tokens,
+                    "iterations": iteration,
+                }}
+
+            # Accumulate token usage
+            usage = response.get("usage", {})
+            total_input_tokens += usage.get("input_tokens", 0)
+            total_output_tokens += usage.get("output_tokens", 0)
 
             self._emit(EventType.LLM_RESPONSE, {
                 "stop_reason": response.get("stop_reason"),
                 "tool_calls": response.get("tool_calls", []),
-                "has_content": bool(response.get("content"))
+                "has_content": bool(response.get("content")),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
             }, iteration)
 
             # ─────────────────────────────────────────────────────────────
@@ -273,12 +287,20 @@ class Agent:
             final_response = response.get("content", "") + \
                 f"\n\n[Note: Analysis stopped after {self.max_iterations} iterations]"
 
+        token_usage = {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
+            "iterations": iteration,
+        }
+
         self._emit(EventType.LOOP_END, {
             "iterations": iteration,
-            "response_length": len(final_response)
+            "response_length": len(final_response),
+            **token_usage,
         }, iteration)
 
-        return final_response
+        return {"response": final_response, "usage": token_usage}
 
 
 # ============================================================================
@@ -308,7 +330,7 @@ def create_agent(
     )
 
 
-def run_query(query: str, verbose: bool = True) -> str:
+def run_query(query: str, verbose: bool = True) -> Dict[str, Any]:
     """
     Quick helper to run a single query.
 
@@ -317,7 +339,7 @@ def run_query(query: str, verbose: bool = True) -> str:
         verbose: Print debug output
 
     Returns:
-        Agent's response
+        Dict with 'response' (str) and 'usage' (token counts)
     """
     agent = create_agent(verbose=verbose)
     return agent.run(query)

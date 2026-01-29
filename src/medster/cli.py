@@ -25,9 +25,14 @@ def main():
                 break
             if query:
                 # Run the clinical analysis agent
-                response = agent.run(query)
-                if response:
-                    print(f"\n{response}\n")
+                result = agent.run(query)
+                if result:
+                    print(f"\n{result['response']}\n")
+                    usage = result.get("usage", {})
+                    print(f"[Tokens: {usage.get('input_tokens', 0):,} in / "
+                          f"{usage.get('output_tokens', 0):,} out / "
+                          f"{usage.get('total_tokens', 0):,} total | "
+                          f"{usage.get('iterations', 0)} iterations]\n")
         except (KeyboardInterrupt, EOFError):
             print("\nSession ended. Goodbye!")
             break
