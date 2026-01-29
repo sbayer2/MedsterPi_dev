@@ -41,17 +41,20 @@ def get_client() -> anthropic.Anthropic:
 # ============================================================================
 
 def call_llm(
-    messages: List[Dict[str, Any]],
-    system_prompt: str,
+    messages: Optional[List[Dict[str, Any]]] = None,
+    system_prompt: str = "You are a helpful medical analysis assistant.",
     tools: Optional[List[Dict[str, Any]]] = None,
     model: str = "claude-sonnet-4-5-20250929",
-    max_tokens: int = 4096
+    max_tokens: int = 4096,
+    prompt: Optional[str] = None,
+    images: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Call Claude LLM with messages and tools.
 
-    This is the core function for the Pi-style event loop.
-    Simple interface: messages in, structured response out.
+    Supports two calling patterns:
+    1. Agent loop: call_llm(messages=[...], system_prompt="...", tools=[...])
+    2. Vision/simple: call_llm(prompt="...", images=[base64_png, ...])
 
     Args:
         messages: Conversation history in Anthropic format
@@ -59,6 +62,8 @@ def call_llm(
         tools: Optional list of tool definitions (Anthropic format)
         model: Model identifier
         max_tokens: Maximum tokens in response
+        prompt: Simple text prompt (auto-constructs messages if provided)
+        images: Optional list of base64-encoded PNG strings for vision analysis
 
     Returns:
         Dict with keys:
@@ -69,6 +74,25 @@ def call_llm(
             - usage: Token usage info
     """
     client = get_client()
+
+    # Auto-construct messages from prompt + images if provided
+    if messages is None and prompt is not None:
+        content = []
+        if images:
+            for img in images:
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": img,
+                    }
+                })
+        content.append({"type": "text", "text": prompt})
+        messages = [{"role": "user", "content": content}]
+
+    if messages is None:
+        raise ValueError("Either 'messages' or 'prompt' must be provided")
 
     # Build request kwargs
     request_kwargs = {

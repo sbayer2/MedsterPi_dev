@@ -507,7 +507,7 @@ def analyze_image_with_llm(image_base64: str, prompt: str) -> str:
         )
 
         # Extract text content from response
-        return response.content if hasattr(response, 'content') else str(response)
+        return response["content"] if isinstance(response, dict) else str(response)
 
     except Exception as e:
         return f"Vision analysis error: {str(e)}"
@@ -585,7 +585,7 @@ Be precise in your RHYTHM classification. Only state "Atrial Fibrillation" if yo
             model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for ECG
         )
 
-        raw_text = response.content if hasattr(response, 'content') else str(response)
+        raw_text = response["content"] if isinstance(response, dict) else str(response)
 
         # Parse structured response with better logic
         def extract_field(text: str, field_name: str) -> str:
@@ -685,7 +685,7 @@ def analyze_multiple_images_with_llm(images: List[str], prompt: str) -> str:
         )
 
         # Extract text content from response
-        return response.content if hasattr(response, 'content') else str(response)
+        return response["content"] if isinstance(response, dict) else str(response)
 
     except Exception as e:
         return f"Vision analysis error: {str(e)}"

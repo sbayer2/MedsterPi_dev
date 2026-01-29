@@ -140,7 +140,7 @@ Be specific and clinically relevant."""
             model="claude-sonnet-4-5-20250929"
         )
 
-        analysis_text = response.content if hasattr(response, 'content') else str(response)
+        analysis_text = response["content"] if isinstance(response, dict) else str(response)
 
         return {
             "status": "success",
@@ -219,7 +219,7 @@ Provide specific clinical findings."""
             model="claude-sonnet-4-5-20250929"
         )
 
-        analysis_text = response.content if hasattr(response, 'content') else str(response)
+        analysis_text = response["content"] if isinstance(response, dict) else str(response)
 
         return {
             "status": "success",
@@ -299,7 +299,7 @@ Provide a detailed analysis with specific findings."""
                     images=[ecg_image],
                     model="claude-sonnet-4-5-20250929"  # Use Claude Sonnet 4.5 for vision
                 )
-                custom_analysis = response.content if hasattr(response, 'content') else str(response)
+                custom_analysis = response["content"] if isinstance(response, dict) else str(response)
                 result["custom_analysis"] = custom_analysis
 
         return {
@@ -419,7 +419,7 @@ Format your response as structured findings for each image."""
         )
 
         # Extract text content from response
-        analysis_text = response.content if hasattr(response, 'content') else str(response)
+        analysis_text = response["content"] if isinstance(response, dict) else str(response)
 
         return {
             "status": "success",
